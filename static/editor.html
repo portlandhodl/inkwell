@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A beautiful, fast Markdown editor powered by Rust + WebAssembly.">
+  <title>Inkwell</title>
+  <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/preview.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <button class="icon-btn" id="toggle-sidebar" data-icon="sidebar" title="Toggle sidebar (Alt+B)" aria-label="Toggle sidebar"></button>
+      <div class="brand"><span id="logo"></span><span class="brand-name">Inkwell</span></div>
+      <div class="title-wrap">
+        <input id="doc-title" spellcheck="false" autocomplete="off" aria-label="Document title" placeholder="Untitled">
+        <span class="save-state" id="save-state" data-state="saved"></span>
+      </div>
+      <div class="spacer"></div>
+      <div class="segmented" id="view-switch" role="tablist" aria-label="View mode">
+        <button data-view="edit" data-icon="pen" title="Write only"><span>Write</span></button>
+        <button data-view="split" data-icon="split" title="Split view"><span>Split</span></button>
+        <button data-view="preview" data-icon="eye" title="Preview only"><span>Preview</span></button>
+      </div>
+      <button class="btn" id="import-btn" data-icon="upload" aria-haspopup="menu">Import</button>
+      <button class="btn primary" id="export-btn" data-icon="download" aria-haspopup="menu">Export</button>
+      <button class="icon-btn" id="theme-btn" data-icon="palette" title="Theme" aria-label="Theme" aria-haspopup="menu"></button>
+      <button class="icon-btn" id="zen-btn" data-icon="zen" title="Zen mode (Alt+Z)" aria-label="Zen mode"></button>
+      <button class="icon-btn" id="palette-btn" data-icon="command" title="Command palette (Ctrl+Shift+P)" aria-label="Command palette"></button>
+      <button class="icon-btn" id="settings-btn" data-icon="settings" title="Settings" aria-label="Settings"></button>
+    </header>
+
+    <nav class="toolbar" id="toolbar" aria-label="Formatting"></nav>
+
+    <main class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="side-tabs">
+          <button data-tab="docs" data-icon="file">Documents</button>
+          <button data-tab="outline" data-icon="outline">Outline</button>
+        </div>
+        <div class="side-panel" data-panel="docs">
+          <div class="side-actions">
+            <label class="search"><span data-icon="search"></span><input id="doc-search" placeholder="Search documents" aria-label="Search documents"></label>
+            <button class="icon-btn accent" id="new-doc" data-icon="plus" title="New document (Alt+N)" aria-label="New document"></button>
+          </div>
+          <ul class="doc-list" id="doc-list"></ul>
+        </div>
+        <div class="side-panel" data-panel="outline" hidden>
+          <nav id="outline" class="outline" aria-label="Document outline"></nav>
+        </div>
+        <div class="side-foot"><div class="wasm-badge" data-icon="bolt">Rust + WebAssembly engine</div></div>
+      </aside>
+
+      <div class="panes" id="panes">
+        <section class="pane editor-pane" id="editor-pane" aria-label="Editor"><div id="editor"></div></section>
+        <div class="resizer" id="resizer" title="Drag to resize · double-click to reset"></div>
+        <section class="pane preview-pane" id="preview-pane" aria-label="Preview"><article id="preview" class="markdown-body"></article></section>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span id="st-words"></span>
+      <span id="st-chars"></span>
+      <span id="st-read"></span>
+      <span id="st-tasks" hidden></span>
+      <span class="spacer"></span>
+      <button id="st-goal" class="goal" hidden><span></span></button>
+      <span id="st-cursor"></span>
+      <span id="st-engine" class="engine"></span>
+    </footer>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="drop-overlay" id="drop-overlay"><div><span data-icon="download"></span>Drop to import</div></div>
+  <input type="file" id="file-input" hidden multiple accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt,.text,.html,.htm,.json,text/markdown,text/plain,text/html,application/json">
+  <input type="file" id="image-input" hidden multiple accept="image/*">
+  <script src="dist/app.js"></script>
+</body>
+</html>

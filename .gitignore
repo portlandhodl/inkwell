@@ -1,0 +1,4 @@
+node_modules/
+extension/
+inkwell.zip
+wasm/target/
