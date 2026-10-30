@@ -1,6 +1,7 @@
 // Inkwell — app shell: wires the WASM engine, editor, preview, storage and UI together.
 import { undo, redo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
+import { startCompletion } from '@codemirror/autocomplete';
 import { initWasm, render as wasmRender, formatTables, emojiList, byteToCharOffset, FLAGS } from './wasm.js';
 import * as store from './store.js';
 import { sanitize, enhance, escapeHtml, resetDiagramTheme } from './preview.js';
@@ -10,6 +11,7 @@ import * as io from './io.js';
 import { confetti } from './confetti.js';
 import { toast, showMenu, closeMenu, promptDialog } from './ui.js';
 import { openPalette } from './palette.js';
+import { buildShareUrl, readShareHash, clearShareHash } from './share.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const root = document.documentElement;
@@ -139,6 +141,7 @@ function renderNow() {
   const { html, meta } = wasmRender(md, flags());
   const ms = performance.now() - t0;
   els.preview.innerHTML = frontmatterCard(meta.frontmatter) + sanitize(html);
+  decorateDocLinks();
   els.preview.classList.toggle('empty', !md.trim());
   const enhanced = enhance(els.preview, { dark: isDark() }).then(() => state.settings.syncScroll && syncPreviewToEditor());
 
@@ -225,7 +228,57 @@ function tocMarkdown() {
 // Documents
 // ---------------------------------------------------------------------------
 
-const sortedDocs = () => [...state.docs].sort((a, b) => (b.pinned - a.pinned) || b.updated - a.updated);
+const DOC_SORTS = {
+  recent: { label: 'Recently edited', icon: 'undo', cmp: (a, b) => b.updated - a.updated },
+  title: { label: 'Title A–Z', icon: 'text', cmp: (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }) },
+  manual: { label: 'Custom order', desc: 'Drag documents, or Alt+↑/↓', icon: 'sort', cmp: (a, b) => (a.order ?? 0) - (b.order ?? 0) },
+};
+
+const sortedDocs = () => {
+  const { cmp } = DOC_SORTS[state.settings.docSort] ?? DOC_SORTS.recent;
+  return [...state.docs].sort((a, b) => (b.pinned - a.pinned) || cmp(a, b));
+};
+
+/** Move `doc` next to `target` (in the full sorted list) and switch to custom order. */
+async function moveDoc(doc, target, place) {
+  if (doc === target) return;
+  const list = sortedDocs().filter((d) => d !== doc);
+  const i = list.indexOf(target) + (place === 'after' ? 1 : 0);
+  list.splice(i, 0, doc);
+  // Pinned docs always sort first, so adopt the pin state of wherever it landed.
+  const prev = list[i - 1];
+  const next = list[i + 1];
+  if (prev && next && prev.pinned === next.pinned) doc.pinned = prev.pinned;
+  else if (!prev && next?.pinned) doc.pinned = true;
+  else if (!next && prev && !prev.pinned) doc.pinned = false;
+  const changed = [];
+  list.forEach((d, n) => {
+    if (d.order !== n || d === doc) {
+      d.order = n;
+      changed.push(d);
+    }
+  });
+  await Promise.all(changed.map((d) => (d === state.doc ? null : store.putDoc(d))));
+  if (changed.includes(state.doc)) await saveNow();
+  if (state.settings.docSort !== 'manual') {
+    updateSettings({ docSort: 'manual' });
+    toast('Switched to custom order', { icon: 'sort' });
+  }
+  renderDocList();
+}
+
+function moveDocBy(doc, delta) {
+  const list = sortedDocs();
+  const target = list[list.indexOf(doc) + delta];
+  return target && moveDoc(doc, target, delta < 0 ? 'before' : 'after');
+}
+
+function sortMenu(anchor) {
+  showMenu(
+    anchor,
+    [{ header: 'Sort documents' }, ...Object.entries(DOC_SORTS).map(([id, o]) => ({ icon: o.icon, label: o.label, desc: o.desc, active: (state.settings.docSort ?? 'recent') === id, run: () => updateSettings({ docSort: id }) }))],
+  );
+}
 
 function autoTitle(meta, md) {
   const doc = state.doc;
@@ -292,6 +345,7 @@ async function openDoc(doc) {
 async function createDoc(content = '', title = 'Untitled', { open = true } = {}) {
   const doc = store.newDoc(content, title);
   doc.autoTitle = title === 'Untitled';
+  doc.order = Math.min(0, ...state.docs.map((d) => d.order ?? 0)) - 1; // top of a custom order
   await store.putDoc(doc);
   state.docs.push(doc);
   if (open) await openDoc(doc);
@@ -335,10 +389,62 @@ async function duplicateDoc(doc) {
   store.putDoc(copy);
 }
 
-function openWikiLink(title) {
-  const doc = state.docs.find((d) => d.title.toLowerCase() === title.toLowerCase());
-  if (doc) return openDoc(doc);
-  createDoc(`# ${title}\n\n`).then(() => toast(`Created “${title}”`, { icon: 'plus' }));
+// ---------------------------------------------------------------------------
+// Links between documents: plain relative links (`[Plan](plan.md#goals)`) or [[wiki links]]
+// ---------------------------------------------------------------------------
+
+const findDoc = (name) => io.docMatcher(state.docs.map((d) => [d, d]))(name);
+const docTarget = (doc) => `${io.slug(doc.title)}.md`;
+
+async function openDocLink(href, text = '') {
+  const ref = io.parseDocHref(href);
+  if (!ref) return;
+  const doc = findDoc(ref.name);
+  if (doc) {
+    if (doc !== state.doc) await openDoc(doc);
+    if (ref.fragment) {
+      requestAnimationFrame(() => els.preview.querySelector(`[id="${CSS.escape(decodeURIComponent(ref.fragment))}"]`)?.scrollIntoView({ block: 'start' }));
+    }
+    return;
+  }
+  // Use the link text as the new title when it still matches the target, so the link resolves.
+  const title = io.slug(text) === io.slug(ref.name) && text.trim() ? text.trim() : ref.name;
+  await createDoc(`# ${title}\n\n`, title);
+  editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
+  toast(`Created “${title}”`, { icon: 'plus' });
+}
+
+function decorateDocLinks() {
+  for (const a of els.preview.querySelectorAll('a[href]')) {
+    const ref = io.parseDocHref(a.getAttribute('href'));
+    if (!ref) continue;
+    const doc = findDoc(ref.name);
+    a.classList.add('doc-link');
+    a.classList.toggle('missing', !doc);
+    a.title = doc ? `Open “${doc.title}”${ref.fragment ? ` › #${ref.fragment}` : ''}` : `Create “${ref.name}”`;
+  }
+}
+
+const LINK_PATTERNS = [/\[(?:[^\]\\\n]|\\.)*\]\(\s*<?([^)\s>]+)>?[^)]*\)/g, /\[\[([^\]|\n]+)(?:\|[^\]\n]*)?\]\]/g];
+
+function backlinksTo(doc) {
+  return sortedDocs().filter(
+    (other) => other !== doc && LINK_PATTERNS.some((re) => [...other.content.matchAll(re)].some((m) => {
+      const ref = io.parseDocHref(m[1]);
+      return ref && findDoc(ref.name) === doc;
+    })),
+  );
+}
+
+function renderBacklinks() {
+  const box = $('#backlinks');
+  if (!state.doc) return;
+  const links = backlinksTo(state.doc);
+  box.innerHTML = `<h4>${icon('link')}Linked from <span>${links.length}</span></h4>${
+    links.length
+      ? links.map((d) => `<a href="#" data-id="${d.id}">${escapeHtml(d.title)}</a>`).join('')
+      : '<p class="side-empty">No other documents link here yet. Type <code>[[</code> in a document to link one.</p>'
+  }`;
 }
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -361,7 +467,7 @@ function renderDocList() {
   els.docList.innerHTML = docs.length
     ? docs
         .map(
-          (d) => `<li class="doc-item${d.id === state.doc?.id ? ' active' : ''}${d.pinned ? ' pinned' : ''}" data-id="${d.id}">
+          (d) => `<li class="doc-item${d.id === state.doc?.id ? ' active' : ''}${d.pinned ? ' pinned' : ''}" data-id="${d.id}" draggable="true">
         <button class="doc-open" title="${escapeHtml(d.title)}">
           <span class="doc-title">${d.pinned ? icon('pin', 'pin-mark') : ''}${escapeHtml(d.title)}</span>
           <span class="doc-snippet">${escapeHtml(snippetOf(d.content)) || '<em>Empty</em>'}</span>
@@ -376,6 +482,7 @@ function renderDocList() {
         )
         .join('')
     : `<li class="side-empty">${q ? 'No documents match.' : 'No documents yet.'}</li>`;
+  renderBacklinks();
 }
 
 // ---------------------------------------------------------------------------
@@ -606,8 +713,230 @@ const EXPORT_ITEMS = () => [
   { icon: 'clipboard', label: 'Copy as rich text', run: exporters.copyHtml },
   { icon: 'copy', label: 'Copy Markdown', run: exporters.copyMd },
   '-',
+  { icon: 'files', label: 'Export multiple documents…', desc: 'ZIP, or one combined file', run: () => openMultiExport() },
   { icon: 'archive', label: 'Back up all documents', desc: '.json, includes images', run: exporters.backup },
 ];
+
+// ---------------------------------------------------------------------------
+// Sharing
+// ---------------------------------------------------------------------------
+
+const formatBytes = (n) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`);
+
+async function openShareDialog() {
+  await saveNow();
+  const doc = state.doc;
+  const content = editor.getText();
+  const url = buildShareUrl({ title: doc.title, content, flags: flags() });
+  const images = new Set([...content.matchAll(/inkimg:([a-z0-9]+)/g)].map((m) => m[1])).size;
+  const canShare = typeof navigator.share === 'function';
+  const d = document.createElement('dialog');
+  d.className = 'modal share-dialog';
+  d.innerHTML = `
+    <header class="modal-head">${icon('share')}<h2>Share “${escapeHtml(doc.title)}”</h2><button class="icon-btn" data-close title="Close">${icon('x')}</button></header>
+    <div class="modal-body">
+      <p class="sh-lead">Anyone with this link can read a copy of this document. It's packed into the link itself: nothing is uploaded, and later edits won't change it.</p>
+      <div class="sh-link"><input readonly spellcheck="false" aria-label="Share link"><button class="btn primary" data-act="copy">${icon('copy')}<span>Copy link</span></button></div>
+      <div class="sh-meta"><span>${icon('link')}${formatBytes(url.length)} link</span>${
+        url.length > 8000 ? `<span class="sh-warn">${icon('alert')}Long link. Some chat and email apps cut these off, so sharing as a file may work better.</span>` : ''
+      }</div>
+      ${images ? `<p class="sh-note">${icon('image')}${images === 1 ? '1 pasted image is' : `${images} pasted images are`} stored only on this device and won't be in the link. Share as a file to include ${images === 1 ? 'it' : 'them'}.</p>` : ''}
+      <div class="sh-actions">
+        ${canShare ? `<button class="sh-action" data-act="native">${icon('share')}<span><b>Share…</b><small>Your system's share sheet</small></span></button>` : ''}
+        <button class="sh-action" data-act="email">${icon('mail')}<span><b>Email</b><small>Opens your mail app</small></span></button>
+        <button class="sh-action" data-act="file">${icon('file')}<span><b>Share as file</b><small>.md with images included</small></span></button>
+        <button class="sh-action" data-act="open">${icon('external')}<span><b>Preview link</b><small>See what others will see</small></span></button>
+      </div>
+    </div>`;
+  document.body.append(d);
+  const input = d.querySelector('input');
+  input.value = url;
+  input.addEventListener('focus', () => input.select());
+  d.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => d.close()));
+  d.addEventListener('click', (e) => e.target === d && d.close());
+  d.addEventListener('close', () => d.remove());
+
+  const shareFile = async () => {
+    const md = await io.embedImages(content);
+    const file = new File([md], `${io.slug(doc.title)}.md`, { type: 'text/markdown' });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: doc.title });
+      } catch (e) {
+        if (e.name !== 'AbortError') throw e;
+      }
+    } else if (await io.saveFile(file.name, file, 'text/markdown', 'Markdown')) {
+      toast('Saved. Attach the file to share it', { icon: 'file' });
+    }
+  };
+
+  d.addEventListener('click', async (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    try {
+      if (act === 'copy') {
+        await navigator.clipboard.writeText(url);
+        const label = d.querySelector('[data-act="copy"] span');
+        label.textContent = 'Copied!';
+        setTimeout(() => (label.textContent = 'Copy link'), 1500);
+      } else if (act === 'native') {
+        await navigator.share({ title: doc.title, text: `${doc.title}, shared from Inkwell`, url }).catch((err) => {
+          if (err.name !== 'AbortError') throw err;
+        });
+      } else if (act === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(doc.title)}&body=${encodeURIComponent(`${doc.title}\n\n${url}`)}`, '_blank');
+      } else if (act === 'file') {
+        await shareFile();
+      } else if (act === 'open') {
+        window.open(url, '_blank', 'noopener');
+      }
+    } catch (err) {
+      toast(`Couldn't share: ${err.message}`, { icon: 'alert', tone: 'error' });
+    }
+  });
+  d.showModal();
+  d.querySelector('[data-act="copy"]').focus();
+}
+
+/** Read-only view of a document someone shared, with an option to keep a copy. */
+async function showSharedDoc() {
+  let shared;
+  try {
+    shared = readShareHash();
+  } catch {
+    clearShareHash();
+    return toast('This share link is incomplete or damaged', { icon: 'alert', tone: 'error', duration: 5000 });
+  }
+  if (!shared) return;
+  document.querySelector('.shared-view')?.close();
+  const d = document.createElement('dialog');
+  d.className = 'shared-view';
+  d.innerHTML = `
+    <header class="shared-bar">
+      ${LOGO}<span class="shared-pill">${icon('share')}Shared with you</span>
+      <h2>${escapeHtml(shared.title)}</h2>
+      <span class="spacer"></span>
+      <button class="btn primary" data-act="save">${icon('download')}Save a copy</button>
+      <button class="btn" data-act="close">Close</button>
+    </header>
+    <div class="shared-scroll"><article class="markdown-body"></article></div>`;
+  document.body.append(d);
+  const body = d.querySelector('.markdown-body');
+  const { html, meta } = wasmRender(shared.content, shared.flags);
+  body.innerHTML = frontmatterCard(meta.frontmatter) + sanitize(html);
+  enhance(body, { dark: isDark() });
+  body.querySelectorAll('input.task-box').forEach((box) => (box.disabled = true));
+  // Links to the sender's other documents can't resolve here.
+  body.addEventListener('click', async (e) => {
+    const copy = e.target.closest('.copy-code');
+    if (copy) {
+      await navigator.clipboard.writeText(copy.parentElement.querySelector('code').textContent);
+      copy.classList.add('copied');
+      setTimeout(() => copy.classList.remove('copied'), 1200);
+      return;
+    }
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    if (href.startsWith('#')) body.querySelector(`[id="${CSS.escape(decodeURIComponent(href.slice(1)))}"]`)?.scrollIntoView({ behavior: 'smooth' });
+    else if (/^(https?|mailto):/i.test(href)) window.open(href, '_blank', 'noopener');
+    else toast("That links to one of the sender's other documents, which wasn't shared", { icon: 'link' });
+  });
+  d.addEventListener('close', () => {
+    clearShareHash();
+    d.remove();
+  });
+  d.querySelector('[data-act="close"]').onclick = () => d.close();
+  d.querySelector('[data-act="save"]').onclick = async () => {
+    const doc = await createDoc(shared.content, shared.title);
+    d.close();
+    toast(`Saved “${doc.title}” to your documents`, { icon: 'check' });
+  };
+  d.showModal();
+}
+
+function openMultiExport() {
+  const d = document.createElement('dialog');
+  d.className = 'modal multi-export';
+  const docs = sortedDocs();
+  let format = state.settings.multiExportFormat ?? 'md-zip';
+  d.innerHTML = `
+    <header class="modal-head">${icon('files')}<h2>Export documents</h2><button class="icon-btn" data-close title="Close">${icon('x')}</button></header>
+    <div class="modal-body">
+      <div class="me-bar">
+        <label class="me-all"><input type="checkbox" checked> Select all</label>
+        <span class="me-count"></span>
+      </div>
+      <ul class="me-list">${docs
+        .map(
+          (doc) => `<li><label><input type="checkbox" value="${doc.id}" checked>
+            <span class="me-title">${doc.pinned ? icon('pin', 'pin-mark') : ''}${escapeHtml(doc.title)}</span>
+            <span class="me-meta">${relTime(doc.updated)}</span></label></li>`,
+        )
+        .join('')}</ul>
+      <p class="me-hint">${icon('sort')}Combined files follow your sidebar order. Drag documents there to rearrange.</p>
+      <h3>Format</h3>
+      <div class="me-formats" role="radiogroup">${io.MULTI_FORMATS.map(
+        (f) => `<label class="me-format"><input type="radio" name="fmt" value="${f.id}" ${f.id === format ? 'checked' : ''}>${icon(f.icon)}
+          <span><b>${f.label}</b><small>${f.desc}</small></span></label>`,
+      ).join('')}</div>
+    </div>
+    <footer class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" data-go>${icon('download')}<span></span></button></footer>`;
+  document.body.append(d);
+
+  const boxes = [...d.querySelectorAll('.me-list input')];
+  const all = d.querySelector('.me-all input');
+  const go = d.querySelector('[data-go]');
+  const selected = () => docs.filter((doc) => boxes.find((b) => b.value === doc.id).checked);
+  const refresh = () => {
+    const n = selected().length;
+    all.checked = n === docs.length;
+    all.indeterminate = n > 0 && n < docs.length;
+    d.querySelector('.me-count').textContent = `${n} of ${docs.length} selected`;
+    go.disabled = n === 0;
+    go.querySelector('span').textContent = n === 1 ? 'Export 1 document' : `Export ${n} documents`;
+  };
+  all.addEventListener('change', () => {
+    boxes.forEach((b) => (b.checked = all.checked));
+    refresh();
+  });
+  d.querySelector('.me-list').addEventListener('change', refresh);
+  d.querySelector('.me-formats').addEventListener('change', (e) => (format = e.target.value));
+  d.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => d.close()));
+  d.addEventListener('click', (e) => e.target === d && d.close());
+  d.addEventListener('close', () => d.remove());
+
+  go.onclick = async () => {
+    const chosen = selected();
+    go.disabled = true;
+    go.classList.add('busy');
+    go.querySelector('span').textContent = 'Preparing…';
+    updateSettings({ multiExportFormat: format });
+    try {
+      await saveNow();
+      const pdf = format === 'pdf-combined';
+      // Exports use light colours for print; restore the theme afterwards.
+      if (pdf && isDark()) root.dataset.theme = 'daylight';
+      let out;
+      try {
+        out = await io.exportDocs(chosen, format, { flags: flags(), dark: pdf ? false : isDark() });
+      } finally {
+        applyTheme();
+      }
+      d.close();
+      if (out.print) await io.printHtml(out.print);
+      else if (await io.saveFile(out.name, out.blob, out.type, out.description)) {
+        toast(`Exported ${chosen.length} document${chosen.length === 1 ? '' : 's'}`, { icon: 'files' });
+      }
+    } catch (e) {
+      toast(`Export failed: ${e.message}`, { icon: 'alert', tone: 'error' });
+      if (d.open) refresh();
+    }
+  };
+  refresh();
+  d.showModal();
+  go.focus();
+}
 
 // ---------------------------------------------------------------------------
 // Toolbar
@@ -754,7 +1083,7 @@ const SETTINGS_SCHEMA = () => [
 ];
 
 const SHORTCUTS = [
-  ['Command palette', 'Mod+Shift+P'], ['Bold / Italic', 'Mod+B / Mod+I'], ['Link', 'Mod+K'], ['Inline code', 'Mod+E'],
+  ['Command palette', 'Mod+Shift+P'], ['Share document', 'Mod+Shift+S'], ['Bold / Italic', 'Mod+B / Mod+I'], ['Link', 'Mod+K'], ['Inline code', 'Mod+E'],
   ['Headings', 'Mod+Alt+1…6'], ['Find & replace', 'Mod+F'], ['Toggle view', 'Mod+\\'], ['Open file', 'Mod+O'],
   ['New document', 'Alt+N'], ['Toggle sidebar', 'Alt+B'], ['Zen mode', 'Alt+Z'], ['Align tables', 'Mod+Shift+F'],
   ['Slash commands', '/'], ['Emoji', ':name'],
@@ -836,7 +1165,12 @@ function paletteItems() {
     c('Export', 'Export as plain text', 'text', exporters.txt),
     c('Export', 'Copy as rich text', 'clipboard', exporters.copyHtml),
     c('Export', 'Copy Markdown', 'copy', exporters.copyMd),
+    c('File', 'Share document…', 'share', openShareDialog, 'Mod+Shift+S', 'link send email'),
+    c('Export', 'Export multiple documents…', 'files', openMultiExport, null, 'zip combined batch several all'),
     c('Export', 'Back up all documents', 'archive', exporters.backup, null, 'json'),
+    ...Object.entries(DOC_SORTS).map(([id, o]) => c('Documents', `Sort documents: ${o.label}`, o.icon, () => updateSettings({ docSort: id }), null, 'order arrange')),
+    c('Documents', 'Move document up', 'sort', () => moveDocBy(state.doc, -1), 'Alt+↑', 'reorder'),
+    c('Documents', 'Move document down', 'sort', () => moveDocBy(state.doc, 1), 'Alt+↓', 'reorder'),
     c('View', 'Write only', 'pen', () => setView('edit'), 'Mod+\\', 'editor'),
     c('View', 'Split view', 'split', () => setView('split')),
     c('View', 'Preview only', 'eye', () => setView('preview')),
@@ -853,6 +1187,10 @@ function paletteItems() {
     c('Format', 'Insert math block', 'math', run(cmd.math), null, 'katex latex equation'),
     c('Format', 'Insert Mermaid diagram', 'diagram', run(cmd.mermaid), null, 'flowchart chart'),
     c('Format', 'Insert footnote', 'footnote', run(cmd.footnote)),
+    c('Format', 'Link to another document…', 'link', () => {
+      insertText(editor.view, '[[');
+      startCompletion(editor.view);
+    }, null, 'reference wiki backlink'),
     c('Format', 'Insert image…', 'image', () => els.imageInput.click()),
     c('Format', 'Insert date', 'sparkles', () => insertText(editor.view, today())),
     c('Edit', 'Find & replace', 'search', () => openSearchPanel(editor.view), 'Mod+F'),
@@ -873,6 +1211,8 @@ function wire() {
   document.querySelectorAll('.side-tabs button').forEach((b) => (b.onclick = () => updateSettings({ sidebarTab: b.dataset.tab })));
   $('#import-btn').onclick = (e) => showMenu(e.currentTarget, IMPORT_ITEMS());
   $('#export-btn').onclick = (e) => showMenu(e.currentTarget, EXPORT_ITEMS(), { align: 'right' });
+  $('#share-btn').onclick = openShareDialog;
+  window.addEventListener('hashchange', showSharedDoc);
   $('#theme-btn').onclick = (e) => themeMenu(e.currentTarget);
   $('#zen-btn').onclick = () => toggleZen();
   $('#palette-btn').onclick = () => openPalette(paletteItems());
@@ -901,6 +1241,54 @@ function wire() {
   });
 
   els.docSearch.addEventListener('input', renderDocList);
+  $('#sort-docs').onclick = (e) => sortMenu(e.currentTarget);
+  $('#backlinks').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-id]');
+    if (!a) return;
+    e.preventDefault();
+    openDoc(state.docs.find((d) => d.id === a.dataset.id));
+  });
+
+  // Drag to reorder
+  let dragged = null;
+  const clearDropMarks = () => els.docList.querySelectorAll('.drop-before, .drop-after').forEach((li) => li.classList.remove('drop-before', 'drop-after'));
+  const dropPlace = (li, e) => (e.clientY < li.getBoundingClientRect().top + li.offsetHeight / 2 ? 'before' : 'after');
+  els.docList.addEventListener('dragstart', (e) => {
+    const li = e.target.closest('.doc-item');
+    if (!li) return;
+    dragged = state.docs.find((d) => d.id === li.dataset.id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-inkwell-doc', dragged.id);
+    requestAnimationFrame(() => li.classList.add('dragging'));
+  });
+  els.docList.addEventListener('dragover', (e) => {
+    const li = e.target.closest('.doc-item');
+    if (!dragged || !li) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearDropMarks();
+    if (li.dataset.id !== dragged.id) li.classList.add(`drop-${dropPlace(li, e)}`);
+  });
+  els.docList.addEventListener('dragleave', (e) => !els.docList.contains(e.relatedTarget) && clearDropMarks());
+  els.docList.addEventListener('drop', (e) => {
+    const li = e.target.closest('.doc-item');
+    if (!dragged || !li) return;
+    e.preventDefault();
+    const target = state.docs.find((d) => d.id === li.dataset.id);
+    moveDoc(dragged, target, dropPlace(li, e));
+  });
+  els.docList.addEventListener('dragend', () => {
+    dragged = null;
+    clearDropMarks();
+    els.docList.querySelector('.dragging')?.classList.remove('dragging');
+  });
+  els.docList.addEventListener('keydown', async (e) => {
+    const li = e.target.closest('.doc-item');
+    if (!li || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    await moveDocBy(state.docs.find((d) => d.id === li.dataset.id), e.key === 'ArrowUp' ? -1 : 1);
+    els.docList.querySelector(`[data-id="${li.dataset.id}"] .doc-open`)?.focus();
+  });
   els.docList.addEventListener('click', (e) => {
     const li = e.target.closest('.doc-item');
     if (!li) return;
@@ -949,7 +1337,7 @@ function wire() {
     } else if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
       window.open(href, '_blank', 'noopener');
     } else {
-      openWikiLink(decodeURIComponent(href).replace(/\.md$/i, ''));
+      openDocLink(href, a.textContent);
     }
   });
 
@@ -1009,7 +1397,10 @@ function wire() {
   document.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
-    if ((mod && e.shiftKey && k === 'p') || e.key === 'F1') {
+    if (mod && e.shiftKey && k === 's') {
+      e.preventDefault();
+      openShareDialog();
+    } else if ((mod && e.shiftKey && k === 'p') || e.key === 'F1') {
       e.preventDefault();
       openPalette(paletteItems());
     } else if (mod && !e.shiftKey && k === 's') {
@@ -1096,6 +1487,7 @@ async function init() {
     parent: $('#editor'),
     emojis: state.emojis,
     getToc: tocMarkdown,
+    getDocs: () => sortedDocs().filter((d) => d !== state.doc).map((d) => ({ title: d.title, target: docTarget(d) })),
     onChange: () => {
       scheduleSave();
       scheduleRender();
@@ -1149,6 +1541,7 @@ async function init() {
   await openDoc(state.docs.find((d) => d.id === state.settings.lastDoc) ?? sortedDocs()[0]);
   wire();
   await handleLaunchParams();
+  await showSharedDoc();
   document.body.classList.add('ready');
 }
 

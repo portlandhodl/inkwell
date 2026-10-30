@@ -26,6 +26,7 @@
         <button data-view="preview" data-icon="eye" title="Preview only"><span>Preview</span></button>
       </div>
       <button class="btn" id="import-btn" data-icon="upload" aria-haspopup="menu">Import</button>
+      <button class="btn" id="share-btn" data-icon="share" title="Share (Ctrl+Shift+S)">Share</button>
       <button class="btn primary" id="export-btn" data-icon="download" aria-haspopup="menu">Export</button>
       <button class="icon-btn" id="theme-btn" data-icon="palette" title="Theme" aria-label="Theme" aria-haspopup="menu"></button>
       <button class="icon-btn" id="zen-btn" data-icon="zen" title="Zen mode (Alt+Z)" aria-label="Zen mode"></button>
@@ -44,12 +45,14 @@
         <div class="side-panel" data-panel="docs">
           <div class="side-actions">
             <label class="search"><span data-icon="search"></span><input id="doc-search" placeholder="Search documents" aria-label="Search documents"></label>
+            <button class="icon-btn" id="sort-docs" data-icon="sort" title="Sort documents" aria-label="Sort documents" aria-haspopup="menu"></button>
             <button class="icon-btn accent" id="new-doc" data-icon="plus" title="New document (Alt+N)" aria-label="New document"></button>
           </div>
           <ul class="doc-list" id="doc-list"></ul>
         </div>
         <div class="side-panel" data-panel="outline" hidden>
           <nav id="outline" class="outline" aria-label="Document outline"></nav>
+          <div id="backlinks" class="backlinks" aria-label="Backlinks"></div>
         </div>
         <div class="side-foot"><div class="wasm-badge" data-icon="bolt">Rust + WebAssembly engine</div></div>
       </aside>

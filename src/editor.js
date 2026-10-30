@@ -270,11 +270,34 @@ function emojiSource(emojis) {
   };
 }
 
+/**
+ * `[[` searches your documents and inserts a plain CommonMark link, `[Title](slug.md)`,
+ * so files stay portable (it also works on GitHub and in a zipped export).
+ */
+function docLinkSource(getDocs) {
+  return (ctx) => {
+    const m = ctx.matchBefore(/\[\[[^\]\n]*/);
+    if (!m) return null;
+    const options = getDocs().map(({ title, target }) => ({
+      label: title,
+      detail: target,
+      type: 'variable',
+      apply: (view, _c, from, to) => {
+        const start = from - 2; // replace the `[[` trigger too
+        const end = view.state.sliceDoc(to, to + 2) === ']]' ? to + 2 : to;
+        const link = `[${title.replace(/([\[\]])/g, '\\$1')}](${target})`;
+        view.dispatch({ changes: { from: start, to: end, insert: link }, selection: { anchor: start + link.length }, userEvent: 'input.complete' });
+      },
+    }));
+    return { from: m.from + 2, options, filter: true };
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createEditor({ parent, emojis, getToc, onChange, onCursor, onPaste, onDropFiles }) {
+export function createEditor({ parent, emojis, getToc, getDocs, onChange, onCursor, onPaste, onDropFiles }) {
   const gutterC = new Compartment();
   const wrapC = new Compartment();
   const attrsC = new Compartment();
@@ -313,8 +336,8 @@ export function createEditor({ parent, emojis, getToc, onChange, onCursor, onPas
     markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
     syntaxHighlighting(highlight),
     baseTheme,
-    placeholder('Start writing… type / for blocks, : for emoji'),
-    autocompletion({ override: [slashSource(getToc), emojiSource(emojis)], icons: false }),
+    placeholder('Start writing… type / for blocks, : for emoji, [[ to link a document'),
+    autocompletion({ override: [slashSource(getToc), emojiSource(emojis), docLinkSource(getDocs)], icons: false }),
     formatKeys,
     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
     EditorView.updateListener.of((u) => {

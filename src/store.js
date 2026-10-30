@@ -59,6 +59,8 @@ export const DEFAULT_SETTINGS = {
   spellcheck: true,
   wordGoal: 500,
   splitRatio: 0.5,
+  docSort: 'recent',
+  multiExportFormat: 'md-zip',
   lastDoc: null,
 };
 

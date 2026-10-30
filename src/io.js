@@ -2,6 +2,7 @@
 import TurndownService from 'turndown';
 import katex from 'katex';
 import { gfm } from 'turndown-plugin-gfm';
+import { zipSync, strToU8 } from 'fflate';
 import { render as wasmRender } from './wasm.js';
 import { sanitize, enhance, imageDataUrl, escapeHtml } from './preview.js';
 import { putImage, uid, listDocs, putDoc, getImage } from './store.js';
@@ -193,7 +194,7 @@ async function getPreviewCss() {
   return previewCss;
 }
 
-export async function buildHtmlDocument(title, bodyHtml) {
+export async function buildHtmlDocument(title, bodyHtml, extraCss = '') {
   const cs = getComputedStyle(document.documentElement);
   const vars = THEME_VARS.map((v) => `${v}:${cs.getPropertyValue(v).trim()};`).join('');
   return `<!doctype html>
@@ -213,6 +214,7 @@ body{margin:0;padding:48px 20px;background:var(--bg);font-family:var(--font-ui);
 @media (max-width:700px){.page{padding:28px 20px}}
 @media print{body{padding:0;background:#fff}.page{border:0;box-shadow:none;padding:0}}
 ${await getPreviewCss()}
+${extraCss}
 </style>
 </head>
 <body>
@@ -262,4 +264,164 @@ export async function restoreBackup(data) {
   }
   for (const doc of data.docs || []) await putDoc(doc);
   return (data.docs || []).length;
+}
+
+// ---------------------------------------------------------------------------
+// Links between documents
+// ---------------------------------------------------------------------------
+
+/**
+ * A relative link such as `notes.md#intro`, `../notes.markdown` or a wiki link's `My Doc` refers to
+ * another document by file name or title. Returns `{ name, fragment }`, or null for external,
+ * protocol-relative and in-page links.
+ */
+export function parseDocHref(href) {
+  if (!href || href.startsWith('#') || href.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(href)) return null;
+  const hash = href.indexOf('#');
+  const path = hash < 0 ? href : href.slice(0, hash);
+  const fragment = hash < 0 ? '' : href.slice(hash + 1);
+  let name = path;
+  try {
+    name = decodeURIComponent(path);
+  } catch {
+    /* keep the raw path */
+  }
+  name = name.split('/').pop().replace(/\.(md|markdown|mdown|mkd|mkdn)$/i, '').trim();
+  return name && !/\.[a-z0-9]{2,5}$/i.test(name) ? { name, fragment } : null;
+}
+
+/** Build a name → value lookup that matches titles case-insensitively or by slug. */
+export function docMatcher(entries) {
+  const byTitle = new Map();
+  const bySlug = new Map();
+  for (const [doc, value] of entries) {
+    if (!byTitle.has(doc.title.toLowerCase())) byTitle.set(doc.title.toLowerCase(), value);
+    if (!bySlug.has(slug(doc.title))) bySlug.set(slug(doc.title), value);
+  }
+  return (name) => byTitle.get(name.toLowerCase()) ?? bySlug.get(slug(name));
+}
+
+/** Point links to other documents at wherever those documents end up in an export. */
+function rewriteDocLinks(html, match, toHref) {
+  return html.replace(/href="([^"]*)"/g, (whole, raw) => {
+    const ref = parseDocHref(raw.replace(/&amp;/g, '&'));
+    const target = ref && match(ref.name);
+    return target === undefined || target === null ? whole : `href="${escapeHtml(toHref(target, ref.fragment))}"`;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-document export
+// ---------------------------------------------------------------------------
+
+export const MULTI_FORMATS = [
+  { id: 'md-zip', icon: 'archive', label: 'Markdown files', desc: '.zip, one .md per document, images in images/' },
+  { id: 'html-zip', icon: 'html', label: 'HTML pages', desc: '.zip, one styled page per document + index' },
+  { id: 'md-combined', icon: 'file', label: 'Single Markdown', desc: 'One .md, documents in sidebar order' },
+  { id: 'html-combined', icon: 'globe', label: 'Single HTML page', desc: 'One page with a table of contents' },
+  { id: 'pdf-combined', icon: 'printer', label: 'Single PDF', desc: 'One PDF via the print dialog' },
+];
+
+const stripFrontmatter = (md) => md.replace(/^---\n[\s\S]*?\n---\n+/, '');
+
+/** Body of a document for a combined export, with its title as an H1 unless it already starts with one. */
+function combinedSection(doc) {
+  const body = stripFrontmatter(doc.content).trim();
+  return /^#\s/.test(body) ? body : `# ${doc.title}\n\n${body}`;
+}
+
+function uniqueNamer() {
+  const used = new Set();
+  return (base, ext) => {
+    let name = base + ext;
+    for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base}-${n}${ext}`;
+    used.add(name.toLowerCase());
+    return name;
+  };
+}
+
+/** Move `inkimg:` images into `images/` inside the zip so each .md stays portable. */
+async function extractImages(markdown, files) {
+  let out = markdown;
+  for (const id of new Set([...markdown.matchAll(/inkimg:([a-z0-9]+)/g)].map((m) => m[1]))) {
+    const rec = await getImage(id);
+    if (!rec) continue;
+    const ext = (rec.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '');
+    const path = `images/${id}.${ext}`;
+    files[path] ??= new Uint8Array(await rec.blob.arrayBuffer());
+    out = out.replaceAll(`inkimg:${id}`, path);
+  }
+  return out;
+}
+
+const COMBINED_CSS = `
+.doc-toc{margin:0 0 3em;padding:1.2em 1.6em;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
+.doc-toc h2{margin:0 0 .5em;border:0;padding:0;font-size:1.1em}
+.doc-toc ol{margin:0}
+.doc-section+.doc-section{margin-top:4em;padding-top:3em;border-top:1px solid var(--border)}
+@media print{.doc-section{break-before:page}.doc-section+.doc-section{margin-top:0;padding-top:0;border:0}.doc-toc{break-after:page}}`;
+
+export async function combinedHtml(docs, flags, dark) {
+  const match = docMatcher(docs.map((d, i) => [d, i + 1]));
+  const sections = [];
+  for (const [i, doc] of docs.entries()) {
+    const body = rewriteDocLinks(await renderForExport(combinedSection(doc), flags, dark), match, (n, frag) => `#${frag || `doc-${n}`}`);
+    sections.push(`<section class="doc-section" id="doc-${i + 1}">${body}</section>`);
+  }
+  const toc = `<nav class="doc-toc"><h2>Contents</h2><ol>${docs.map((d, i) => `<li><a href="#doc-${i + 1}">${escapeHtml(d.title)}</a></li>`).join('')}</ol></nav>`;
+  return buildHtmlDocument(`${docs.length} documents`, toc + sections.join('\n'), COMBINED_CSS);
+}
+
+/**
+ * Export several documents at once. Returns `{ name, blob, type, description }` to save,
+ * or the full HTML to print for the PDF format.
+ */
+export async function exportDocs(docs, format, { flags, dark }) {
+  const stamp = `inkwell-${new Date().toISOString().slice(0, 10)}`;
+  const name = uniqueNamer();
+  if (format === 'md-zip' || format === 'html-zip') {
+    const files = {};
+    const links = [];
+    // Markdown files are named `<slug>.md`, the same target `[[` links use, so they keep working.
+    const fileNames = docs.map((doc) => name(slug(doc.title), format === 'md-zip' ? '.md' : '.html'));
+    const match = docMatcher(docs.map((d, i) => [d, fileNames[i]]));
+    for (const [i, doc] of docs.entries()) {
+      const file = fileNames[i];
+      if (format === 'md-zip') {
+        files[file] = strToU8(await extractImages(doc.content, files));
+      } else {
+        const body = rewriteDocLinks(await renderForExport(doc.content, flags, dark), match, (f, frag) => encodeURI(f) + (frag ? `#${frag}` : ''));
+        files[file] = strToU8(await buildHtmlDocument(doc.title, body));
+        links.push(`<li><a href="${encodeURI(file)}">${escapeHtml(doc.title)}</a></li>`);
+      }
+    }
+    if (format === 'html-zip') {
+      files[name('index', '.html')] = strToU8(await buildHtmlDocument('Documents', `<h1>Documents</h1><ul>${links.join('')}</ul>`));
+    }
+    return { name: `${stamp}.zip`, blob: new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), type: 'application/zip', description: 'ZIP archive' };
+  }
+  if (format === 'md-combined') {
+    const md = await embedImages(docs.map(combinedSection).join('\n\n---\n\n') + '\n');
+    return { name: `${stamp}.md`, blob: new Blob([md], { type: 'text/markdown' }), type: 'text/markdown', description: 'Markdown' };
+  }
+  const html = await combinedHtml(docs, flags, dark);
+  if (format === 'pdf-combined') return { print: html };
+  return { name: `${stamp}.html`, blob: new Blob([html], { type: 'text/html' }), type: 'text/html', description: 'Web page' };
+}
+
+/** Print an HTML document from a hidden frame, so the open document's preview isn't disturbed. */
+export function printHtml(html) {
+  return new Promise((resolve) => {
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    frame.srcdoc = html;
+    frame.onload = () =>
+      setTimeout(() => {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        resolve();
+        setTimeout(() => frame.remove(), 1000);
+      }, 300);
+    document.body.append(frame);
+  });
 }

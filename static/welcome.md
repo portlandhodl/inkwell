@@ -114,7 +114,7 @@ flowchart LR
 
 ## Linking documents
 
-Wiki-style links like [[My Next Idea]] open the document with that title, or create it if it doesn't exist yet.
+Type `[[` to search your documents. Inkwell inserts a regular Markdown link like `[Welcome](welcome-to-inkwell.md)`, so it keeps working on GitHub, in other editors, and in a zipped export. A link to a document that doesn't exist yet looks like [My Next Idea](my-next-idea.md); click it to create the document. `[[Wiki links]]` work too, and the **Outline** panel shows every document that links to the one you're reading.
 
 ---
 

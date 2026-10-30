@@ -58,7 +58,21 @@
 
 .markdown-body a { color: var(--syn-link); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--syn-link) 35%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; transition: text-decoration-color .15s; cursor: pointer; }
 .markdown-body a:hover { text-decoration-color: currentColor; }
-.markdown-body a:not([href^="http"]):not([href^="#"]):not([href^="mailto"]):not(.autolink) { border-bottom: 1px dashed var(--accent); text-decoration: none; }
+/* links to other Inkwell documents */
+.markdown-body a.doc-link {
+  text-decoration: none;
+  padding: .05em .4em;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background .15s, box-shadow .15s;
+}
+.markdown-body a.doc-link::before { content: "↗ "; opacity: .55; font-weight: 400; }
+.markdown-body a.doc-link:hover { box-shadow: 0 0 0 2px var(--accent-soft); }
+.markdown-body a.doc-link.missing { background: transparent; color: var(--muted); border: 1px dashed var(--faint); font-weight: 500; }
+.markdown-body a.doc-link.missing::before { content: "+ "; }
 
 .markdown-body strong { font-weight: 700; }
 .markdown-body mark { background: var(--mark-bg); color: inherit; padding: .05em .25em; border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -106,7 +120,8 @@
   transition: all .2s cubic-bezier(.2, .8, .2, 1);
   background: var(--surface);
 }
-.task-box:hover { border-color: var(--accent); transform: scale(1.1); }
+.task-box:hover:not(:disabled) { border-color: var(--accent); transform: scale(1.1); }
+.task-box:disabled { cursor: default; }
 .task-box:checked { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; animation: tick .35s cubic-bezier(.2, .8, .2, 1.4); }
 .task-box:checked::after {
   content: "";
