@@ -34,6 +34,8 @@ A Markdown editor for Chrome. Markdown is parsed by a Rust engine (`pulldown-cma
 | `static/` | Manifest, service worker, HTML, CSS, icons, welcome doc |
 | `tools/make_icons.py` | Regenerates the PNG icons |
 
+**Link previews:** `static/editor.html` carries Open Graph and X card tags plus `theme-color`, Slack label rows and an Apple touch icon, so links unfurl on Facebook, X, LinkedIn, Slack, Discord, WhatsApp, iMessage, Telegram, Teams, Signal, Mastodon, Bluesky and Reddit. The card image is `static/og-image.png` (1200×630), rendered from `tools/og-card.html` by `tools/make_og.sh`. The site address comes from `SITE_URL` in `build.sh`; the Pages workflow sets it automatically.
+
 Pushing to `main` builds and deploys the site through `.github/workflows/pages.yml`; the site also offers the extension zip for download.
 
 Run the core's tests with `cd wasm && cargo test --lib`.

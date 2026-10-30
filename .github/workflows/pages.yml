@@ -30,13 +30,16 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - id: pages
+        uses: actions/configure-pages@v5
       - name: Test the Rust core
         run: cargo test --lib --manifest-path wasm/Cargo.toml
       - name: Build
         run: ./build.sh
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}/
       - name: Add extension download
         run: cp inkwell.zip extension/inkwell-extension.zip
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: extension

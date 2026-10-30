@@ -54,4 +54,9 @@ d.arc((S / 2 - 170, S / 2 - 20, S / 2 + 130, S / 2 + 280), start=110, end=180, f
 for size in (16, 32, 48, 128):
     img.resize((size, size), Image.LANCZOS).save(OUT / f'icon-{size}.png')
 img.resize((512, 512), Image.LANCZOS).save(OUT / 'icon-512.png')
+# iOS/iMessage touch icon: opaque, since iOS fills transparency with black
+touch = Image.new('RGBA', (180, 180), (109, 93, 252, 255))
+full = img.resize((180, 180), Image.LANCZOS)
+touch.alpha_composite(full)
+touch.convert('RGB').save(OUT / 'icon-180.png')
 print('icons written to', OUT)

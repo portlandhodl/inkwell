@@ -3,6 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT=extension
+# Public address of the web build, used for link previews and share links.
+SITE_URL="${SITE_URL:-https://portlandhodl.github.io/inkwell/}"
+[[ "$SITE_URL" == */ ]] || SITE_URL="$SITE_URL/"
 
 echo "› Rust → WebAssembly"
 (cd wasm && cargo build --quiet --release --target wasm32-unknown-unknown)
@@ -13,10 +16,11 @@ cp wasm/target/wasm32-unknown-unknown/release/inkwell_core.wasm "$OUT/dist/inkwe
 
 echo "› Bundling UI"
 npx esbuild src/main.js --bundle --minify --format=iife --target=chrome110 \
-  --legal-comments=none --log-level=warning --outfile="$OUT/dist/app.js"
+  --legal-comments=none --log-level=warning --define:__SITE_URL__="\"$SITE_URL\"" --outfile="$OUT/dist/app.js"
 
 echo "› Copying static assets"
 cp -r static/. "$OUT/"
+sed -i "s|%SITE_URL%|$SITE_URL|g" "$OUT/editor.html"
 cp "$OUT/editor.html" "$OUT/index.html"   # GitHub Pages entry point
 cp node_modules/katex/dist/katex.min.css "$OUT/vendor/katex/"
 cp -r node_modules/katex/dist/fonts "$OUT/vendor/katex/"

@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- Source for static/og-image.png (the link-preview card). Render at 1200×630; see tools/make_og.sh. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600&display=block" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: Inter, sans-serif;
+    color: #f3efff;
+    background:
+      radial-gradient(520px 340px at 12% 8%, rgba(139, 124, 255, .55), transparent 70%),
+      radial-gradient(560px 380px at 92% 22%, rgba(255, 107, 154, .42), transparent 70%),
+      radial-gradient(700px 420px at 50% 120%, rgba(56, 189, 248, .28), transparent 70%),
+      linear-gradient(160deg, #150f33 0%, #1d1247 55%, #120c2a 100%);
+    position: relative;
+  }
+  /* faint dot grid */
+  body::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.4px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 75%);
+  }
+  .stack { position: absolute; top: 58px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .brand { display: flex; align-items: center; gap: 22px; }
+  .brand svg { width: 92px; height: 92px; filter: drop-shadow(0 12px 30px rgba(139,124,255,.6)); }
+  .word {
+    font-size: 104px; font-weight: 800; letter-spacing: -0.045em; line-height: 1;
+    background: linear-gradient(110deg, #ffffff 20%, #c9c0ff 55%, #ff9cc4 95%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tag { margin-top: 20px; font-size: 33px; font-weight: 600; letter-spacing: -0.015em; color: #e7e2ff; }
+  .tag b { background: linear-gradient(90deg, #a99cff, #ff8fbd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chips { display: flex; gap: 12px; margin-top: 24px; }
+  .chip {
+    display: flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 99px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16);
+    font-size: 19px; font-weight: 600; color: #ece8ff;
+  }
+  .chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 12px var(--c); }
+
+  /* app window peeking up from the bottom */
+  .window {
+    position: absolute; left: 150px; right: 150px; top: 372px; height: 300px;
+    border-radius: 18px 18px 0 0; overflow: hidden;
+    background: #fbfbff; border: 1px solid rgba(255,255,255,.4);
+    box-shadow: 0 -10px 60px rgba(109, 93, 252, .45), 0 0 0 8px rgba(255,255,255,.06);
+  }
+  .bar { height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: #eef0f8; border-bottom: 1px solid #e1e4f0; }
+  .bar span { width: 11px; height: 11px; border-radius: 50%; }
+  .bar .t { margin-left: 12px; font-size: 13px; font-weight: 700; color: #5d6280; width: auto; height: auto; border-radius: 0; }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+  .src { padding: 18px 22px; font: 500 15px/1.75 "JetBrains Mono", monospace; color: #1d2033; border-right: 1px solid #e1e4f0; white-space: pre; }
+  .m { color: #a3a8c6; } .h { color: #2a2470; font-weight: 600; } .k { color: #8b3fd9; } .s { color: #18864b; } .l { color: #5b4bf5; }
+  .pv { padding: 16px 26px; color: #1d2033; }
+  .pv h1 { font-size: 27px; font-weight: 800; letter-spacing: -.03em; background: linear-gradient(110deg,#1d2033 30%,#6d5dfc 75%,#ff6b9a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .pv p { margin-top: 8px; font-size: 15px; color: #3a3f5c; }
+  .task { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 15px; font-weight: 500; }
+  .box { width: 17px; height: 17px; border-radius: 5px; border: 2px solid #9aa0bd; }
+  .box.on { border: 0; background: linear-gradient(135deg,#6d5dfc,#ff6b9a); position: relative; }
+  .box.on::after { content: ""; position: absolute; left: 6px; top: 2.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+  .done { color: #8b90ad; }
+  .math { margin-top: 12px; font: italic 500 19px "Times New Roman", serif; color: #1d2033; }
+  .wasm { position: absolute; right: 18px; top: 7px; font: 700 12px Inter; color: #6d5dfc; background: rgba(109,93,252,.12); padding: 3px 9px; border-radius: 99px; }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b7cff"/><stop offset="1" stop-color="#ff6b9a"/></linearGradient></defs>
+        <path d="M16 3c4.8 6 9 11 9 16a9 9 0 0 1-18 0c0-5 4.2-10 9-16z" fill="url(#g)"/>
+        <path d="M12 20a4 4 0 0 0 4 4" stroke="#fff" stroke-opacity=".8" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+      <div class="word">Inkwell</div>
+    </div>
+    <div class="tag">The Markdown editor powered by <b>Rust + WebAssembly</b></div>
+    <div class="chips">
+      <div class="chip" style="--c:#8b7cff"><i></i>Live preview</div>
+      <div class="chip" style="--c:#34d399"><i></i>Math &amp; diagrams</div>
+      <div class="chip" style="--c:#ff6b9a"><i></i>Share links</div>
+      <div class="chip" style="--c:#38bdf8"><i></i>Private by design</div>
+    </div>
+  </div>
+
+  <div class="window">
+    <div class="bar"><span style="background:#ff6b6b"></span><span style="background:#ffd166"></span><span style="background:#06d6a0"></span><span class="t">Launch plan</span><em class="wasm">⚡ WASM 0.4 ms</em></div>
+    <div class="panes">
+<div class="src"><span class="m"># </span><span class="h">Launch plan</span>
+Ship it <span class="k">**today**</span>, see <span class="l">[notes](notes.md)</span>
+<span class="m">- </span><span class="s">[x]</span> Write the docs
+<span class="m">- </span><span class="s">[ ]</span> Tell everyone
+<span class="m">$$</span> E = mc^2 <span class="m">$$</span></div>
+      <div class="pv">
+        <h1>Launch plan</h1>
+        <p>Ship it <b>today</b>, see <span style="color:#6d5dfc;font-weight:600;background:rgba(109,93,252,.12);padding:1px 6px;border-radius:5px">↗ notes</span></p>
+        <div class="task done"><span class="box on"></span>Write the docs</div>
+        <div class="task"><span class="box"></span>Tell everyone</div>
+        <div class="math">E = mc²</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 import { deflateSync, inflateSync, strToU8, strFromU8 } from 'fflate';
 
 /** Where share links point when Inkwell runs somewhere others can't open (the Chrome extension). */
-export const PUBLIC_URL = 'https://portlandhodl.github.io/inkwell/';
+export const PUBLIC_URL = __SITE_URL__; // injected by build.sh
 const PREFIX = '#share=';
 
 function toBase64Url(bytes) {

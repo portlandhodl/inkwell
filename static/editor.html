@@ -3,9 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A beautiful, fast Markdown editor powered by Rust + WebAssembly.">
-  <title>Inkwell</title>
+  <title>Inkwell · Markdown editor</title>
+  <meta name="description" content="A fast, beautiful Markdown editor that runs in your browser: live preview, math, diagrams, themes, share links and import/export. No sign-up, and your documents stay on your device.">
+  <meta name="theme-color" content="#6d5dfc">
+  <link rel="canonical" href="%SITE_URL%">
   <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+
+  <!-- Link previews. Open Graph covers Facebook, LinkedIn, Slack, Discord, WhatsApp, iMessage,
+       Telegram, Teams, Signal, Mastodon, Bluesky and Reddit; twitter:* covers X. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Inkwell">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="%SITE_URL%">
+  <meta property="og:title" content="Inkwell — Markdown editor powered by Rust + WebAssembly">
+  <meta property="og:description" content="A fast, beautiful Markdown editor that runs in your browser: live preview, math, diagrams, themes, share links and import/export. No sign-up, and your documents stay on your device.">
+  <meta property="og:image" content="%SITE_URL%og-image.png">
+  <meta property="og:image:secure_url" content="%SITE_URL%og-image.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Inkwell, the Markdown editor powered by Rust + WebAssembly, showing Markdown source next to its live preview">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Inkwell — Markdown editor powered by Rust + WebAssembly">
+  <meta name="twitter:description" content="A fast, beautiful Markdown editor that runs in your browser: live preview, math, diagrams, themes, share links and import/export. No sign-up, and your documents stay on your device.">
+  <meta name="twitter:image" content="%SITE_URL%og-image.png">
+  <meta name="twitter:image:alt" content="Inkwell, the Markdown editor powered by Rust + WebAssembly, showing Markdown source next to its live preview">
+  <!-- Slack shows these as extra rows under the preview -->
+  <meta name="twitter:label1" content="Engine">
+  <meta name="twitter:data1" content="Rust + WebAssembly">
+  <meta name="twitter:label2" content="Privacy">
+  <meta name="twitter:data2" content="Documents stay on your device">
   <link rel="stylesheet" href="vendor/katex/katex.min.css">
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/preview.css">
