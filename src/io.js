@@ -190,7 +190,7 @@ const THEME_VARS = [
 
 let previewCss = null;
 async function getPreviewCss() {
-  previewCss ??= await fetch('css/preview.css').then((r) => r.text());
+  if (previewCss === null) previewCss = globalThis.__INKWELL_PREVIEW_CSS__ ?? (await fetch('css/preview.css').then((r) => r.text()));
   return previewCss;
 }
 

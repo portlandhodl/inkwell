@@ -5,9 +5,17 @@ let core = null;
 
 export const FLAGS = { smartPunct: 1, hardBreaks: 2, subscript: 4 };
 
+function decodeBase64(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 export async function initWasm(url) {
-  const res = await fetch(url);
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
+  // The single-file build embeds the module so it works from file:// with no network.
+  const bytes = globalThis.__INKWELL_WASM_B64__ ? decodeBase64(globalThis.__INKWELL_WASM_B64__) : await (await fetch(url)).arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, {});
   core = instance.exports;
 }
 

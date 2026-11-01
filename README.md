@@ -12,6 +12,10 @@ A Markdown editor for Chrome. Markdown is parsed by a Rust engine (`pulldown-cma
 
 `inkwell.zip` is produced alongside for uploading to the Chrome Web Store.
 
+## Offline single file
+
+`./build-offline.sh` produces `inkwell.html`: the whole editor in one file, with the WebAssembly core, Mermaid, KaTeX fonts, styles and icons embedded. Copy it to an air-gapped machine and open it—no server or network needed. Releases attach this file.
+
 ## Features
 
 - **Markdown:** CommonMark + GFM tables, task lists, strikethrough, footnotes, autolinks, GitHub alerts (`> [!NOTE]`), definition lists, front matter, heading IDs/attributes, `==highlight==`, `^sup^`, optional `~sub~`, `:emoji:` shortcodes, `[[wiki links]]` between documents, smart punctuation, hard-break mode.

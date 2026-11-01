@@ -1532,7 +1532,7 @@ async function init() {
 
   state.docs = await store.listDocs();
   if (!state.docs.length) {
-    const welcome = await fetch('welcome.md').then((r) => r.text());
+    const welcome = globalThis.__INKWELL_WELCOME__ ?? (await fetch('welcome.md').then((r) => r.text()));
     const doc = store.newDoc(welcome, 'Welcome to Inkwell');
     doc.autoTitle = false;
     await store.putDoc(doc);

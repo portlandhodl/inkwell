@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wasm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Test the Rust core
+        run: cargo test --lib --manifest-path wasm/Cargo.toml
+      - name: Build the single-file offline app
+        run: ./build-offline.sh
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: inkwell.html
+          generate_release_notes: true

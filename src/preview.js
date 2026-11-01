@@ -78,6 +78,7 @@ let mermaidTheme = null;
 let mermaidSeq = 0;
 
 function loadMermaid() {
+  if (globalThis.mermaid) return (mermaidLoader ??= Promise.resolve(globalThis.mermaid));
   mermaidLoader ??= new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'vendor/mermaid.min.js';
