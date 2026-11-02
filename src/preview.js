@@ -5,6 +5,7 @@ import katex from 'katex';
 import hljs from 'highlight.js/lib/common';
 import { getImage } from './store.js';
 import { icon } from './icons.js';
+import { openDiagramViewer } from './diagram-viewer.js';
 
 const PURIFY = {
   ADD_ATTR: ['target', 'data-line', 'data-offset'],
@@ -89,6 +90,21 @@ function loadMermaid() {
   return mermaidLoader;
 }
 
+function addZoomButton(box) {
+  const svg = box.querySelector('svg');
+  if (!svg) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'mermaid-zoom';
+  b.title = 'Open diagram viewer (zoom & magnifier)';
+  b.innerHTML = icon('expand');
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDiagramViewer(svg);
+  });
+  box.append(b);
+}
+
 async function renderMermaid(pre, src, dark) {
   const theme = dark ? 'dark' : 'default';
   const key = theme + '\0' + src;
@@ -98,6 +114,7 @@ async function renderMermaid(pre, src, dark) {
   const cached = mermaidCache.get(key);
   if (cached) {
     box.innerHTML = cached;
+    addZoomButton(box);
     return;
   }
   box.innerHTML = '<div class="mermaid-loading">Drawing diagram…</div>';
@@ -111,6 +128,7 @@ async function renderMermaid(pre, src, dark) {
     const { svg } = await mermaid.render(id, src);
     mermaidCache.set(key, svg);
     box.innerHTML = svg;
+    addZoomButton(box);
   } catch (e) {
     document.getElementById('d' + `mmd-${mermaidSeq}`)?.remove();
     box.innerHTML = `<div class="mermaid-error">${icon('alert')}<span>${escapeHtml(e?.message || e)}</span></div>`;

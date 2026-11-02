@@ -173,7 +173,7 @@ export async function renderForExport(markdown, flags, dark) {
         });
       }
     }
-    host.querySelectorAll('.src-line, .copy-code').forEach((n) => n.remove());
+    host.querySelectorAll('.src-line, .copy-code, .mermaid-zoom').forEach((n) => n.remove());
     host.querySelectorAll('input.task-box').forEach((n) => n.setAttribute('disabled', ''));
     return host.innerHTML;
   } finally {

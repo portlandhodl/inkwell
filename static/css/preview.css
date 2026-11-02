@@ -275,8 +275,29 @@
   border-radius: 14px;
   background: var(--surface-2);
   overflow-x: auto;
+  position: relative;
 }
 .markdown-body .mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-zoom {
+  position: absolute;
+  top: .5em;
+  right: .5em;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  opacity: 0;
+  cursor: zoom-in;
+  transition: opacity .15s, color .15s, transform .15s;
+}
+.mermaid-zoom .icon { width: 14px; height: 14px; }
+.mermaid-block:hover .mermaid-zoom, .mermaid-zoom:focus-visible { opacity: 1; }
+.mermaid-zoom:hover { color: var(--accent); transform: scale(1.08); }
+@media (hover: none) { .mermaid-zoom { opacity: 1; } }
 .mermaid-loading { color: var(--faint); font-size: .9em; font-style: italic; }
 .mermaid-error { display: flex; gap: .5em; align-items: flex-start; white-space: pre-wrap; }
 .mermaid-error .icon { flex: none; width: 16px; height: 16px; }
