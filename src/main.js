@@ -86,12 +86,20 @@ function applyLayout() {
   els.app.classList.toggle('no-sidebar', !s.sidebar);
   root.style.setProperty('--split', s.splitRatio);
   root.style.setProperty('--editor-size', `${s.fontSize}px`);
+  showPreviewWidth(s.previewWidth);
   root.dataset.previewFont = s.previewFont;
   root.dataset.editorFont = s.editorFont ?? 'mono';
   document.querySelectorAll('#view-switch button').forEach((b) => b.classList.toggle('active', b.dataset.view === s.view));
   document.querySelectorAll('.side-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === s.sidebarTab));
   document.querySelectorAll('.side-panel').forEach((p) => (p.hidden = p.dataset.panel !== s.sidebarTab));
   requestAnimationFrame(() => editor?.view.requestMeasure());
+}
+
+/** Reflect the preview text width in the CSS and the status-bar slider. */
+function showPreviewWidth(px) {
+  root.style.setProperty('--preview-width', `${px}px`);
+  $('#preview-width').value = px;
+  $('#preview-width-out').textContent = `${px}px`;
 }
 
 function updateSettings(patch) {
@@ -1219,6 +1227,12 @@ function wire() {
   $('#settings-btn').onclick = openSettings;
   $('#new-doc').onclick = (e) =>
     showMenu(e.currentTarget, [{ header: 'New document' }, ...TEMPLATES.map((t) => ({ icon: t.icon, label: t.name, run: () => newFromTemplate(t) }))]);
+  // Preview width: update live while dragging, persist once released; double-click resets.
+  const pw = $('#preview-width');
+  pw.addEventListener('input', () => showPreviewWidth(+pw.value));
+  pw.addEventListener('change', () => updateSettings({ previewWidth: +pw.value }));
+  $('#st-width').addEventListener('dblclick', () => updateSettings({ previewWidth: store.DEFAULT_SETTINGS.previewWidth }));
+
   $('#st-goal').onclick = async () => {
     const v = await promptDialog({ title: 'Word goal', label: 'Words to aim for in each document', value: String(state.settings.wordGoal), okLabel: 'Set goal', icon: 'target' });
     if (v !== null && !Number.isNaN(+v)) updateSettings({ wordGoal: Math.max(0, Math.round(+v)) });

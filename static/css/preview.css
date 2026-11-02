@@ -7,7 +7,7 @@
   font-size: 16px;
   line-height: 1.72;
   color: var(--text);
-  max-width: 820px;
+  max-width: var(--preview-width, 820px);
   margin: 0 auto;
   padding: 44px 52px 30vh;
   word-wrap: break-word;

@@ -657,6 +657,10 @@ kbd {
 .goal.done { color: var(--alert-tip); font-weight: 600; }
 .goal.done::before { background: var(--alert-tip); }
 .goal[hidden], #st-tasks[hidden] { display: none; }
+.pw { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+.pw input[type="range"] { width: 110px; height: 14px; margin: 0; }
+.pw output { min-width: 44px; }
+.app[data-view="edit"] .pw { display: none; }
 
 /* ---------------------------------------------------------------- zen */
 
@@ -891,7 +895,7 @@ input[type="range"] { accent-color: var(--accent); width: 140px; }
 @media (max-width: 860px) {
   .sidebar { position: absolute; z-index: 20; top: 110px; bottom: 40px; }
   .btn { padding: 0 9px; }
-  #st-chars, #st-read { display: none !important; }
+  #st-chars, #st-read, .pw { display: none !important; }
 }
 
 /* ---------------------------------------------------------------- print = PDF export */
