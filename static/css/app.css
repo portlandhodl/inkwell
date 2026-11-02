@@ -609,10 +609,12 @@ kbd {
 .app.resizing { cursor: col-resize; user-select: none; }
 .app.resizing .pane { pointer-events: none; }
 
-.app[data-view="edit"] .panes { grid-template-columns: minmax(0, 1fr) 0 0; }
-.app[data-view="preview"] .panes { grid-template-columns: 0 0 minmax(0, 1fr); }
+/* Single-pane views: the hidden pane and resizer are display:none, which removes them from the
+   grid, so the remaining pane is the only item and must get the only (full-width) column. */
+.app[data-view="edit"] .panes, .app[data-view="preview"] .panes { grid-template-columns: minmax(0, 1fr); }
 .app[data-view="edit"] .preview-pane, .app[data-view="edit"] .resizer,
-.app[data-view="preview"] .editor-pane, .app[data-view="preview"] .resizer { display: none; }
+.app[data-view="preview"] .editor-pane, .app[data-view="preview"] .resizer,
+.app[data-view="preview"] .toolbar { display: none; }
 
 /* ---------------------------------------------------------------- status bar */
 
