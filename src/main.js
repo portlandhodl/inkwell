@@ -95,12 +95,26 @@ function applyLayout() {
   requestAnimationFrame(() => editor?.view.requestMeasure());
 }
 
-/** Reflect the preview text width in the CSS and the status-bar slider. */
+/** Reflect the preview text width ('full' or a px cap) in the CSS and the status-bar slider. */
 function showPreviewWidth(px) {
-  root.style.setProperty('--preview-width', `${px}px`);
-  $('#preview-width').value = px;
-  $('#preview-width-out').textContent = `${px}px`;
+  const full = px === 'full';
+  const slider = $('#preview-width');
+  root.style.setProperty('--preview-width', full ? 'none' : `${px}px`);
+  slider.value = full ? slider.max : px;
+  $('#preview-width-out').textContent = full ? 'Full' : `${px}px`;
 }
+
+/** The slider's far end is "Full"; its range tracks the pane so every position has a visible effect. */
+function fitPreviewWidthRange() {
+  const slider = $('#preview-width');
+  const avail = els.previewPane.clientWidth;
+  if (!avail) return; // pane hidden (write-only view)
+  const step = +slider.step;
+  slider.max = Math.max(+slider.min + step, Math.ceil(avail / step) * step);
+  showPreviewWidth(state.settings.previewWidth);
+}
+
+const sliderWidth = (slider) => (+slider.value >= +slider.max ? 'full' : +slider.value);
 
 function updateSettings(patch) {
   const before = state.settings;
@@ -1229,8 +1243,9 @@ function wire() {
     showMenu(e.currentTarget, [{ header: 'New document' }, ...TEMPLATES.map((t) => ({ icon: t.icon, label: t.name, run: () => newFromTemplate(t) }))]);
   // Preview width: update live while dragging, persist once released; double-click resets.
   const pw = $('#preview-width');
-  pw.addEventListener('input', () => showPreviewWidth(+pw.value));
-  pw.addEventListener('change', () => updateSettings({ previewWidth: +pw.value }));
+  pw.addEventListener('input', () => showPreviewWidth(sliderWidth(pw)));
+  pw.addEventListener('change', () => updateSettings({ previewWidth: sliderWidth(pw) }));
+  new ResizeObserver(fitPreviewWidthRange).observe(els.previewPane);
   $('#st-width').addEventListener('dblclick', () => updateSettings({ previewWidth: store.DEFAULT_SETTINGS.previewWidth }));
 
   $('#st-goal').onclick = async () => {
